@@ -1,11 +1,18 @@
 * [Data engineering project](#data-engineering-project)
-     * [Architecture](#architecture)
-     * [Data collection](#data-collection)
-     * [Data streaming](#setup)
-          * [Option 1: Github codespaces (Recommended)](#option-1-github-codespaces-recommended)
-          * [Option 2: Run locally](#option-2-run-locally)
+    * [Architecture](#architecture)
+    * [API info](#api-intro)
+    * [Data streaming](#setup)
+        * [Option 1: Apache Airflow](#airflow-streaming)
+        * [Option 2: Apache Nifi](#nifi-streaming)
+    * [Data modeling](#data-modeling)
+    * [Data visualiastion](#powerbi)
+    * [Machine learning?](#ml)
 
-<br> </br>
+<!-- small space -->
 
 # Data engineering project
-In this project, a 
+In this project, we build a data pipeline using [newsapi](https://newsapi.ai/).
+
+<!-- small space -->
+
+## Architecture
