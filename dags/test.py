@@ -4,7 +4,6 @@ import os
 
 import requests
 import pandas as pd
-
 import sqlalchemy
 from sqlalchemy import text
 from dotenv import load_dotenv
@@ -20,8 +19,8 @@ load_dotenv()
 
 default_args = {
     'owner': 'alecfei',
-    'start_date': dt.datetime(2024, 10, 31),
-    'retries': 1,
+    'start_date': dt.datetime(2024, 10, 30),
+    #'retries': 1,
     'retry_delay': dt.timedelta(minutes=5),
 }
 
@@ -32,8 +31,6 @@ def extractData():
     params = {
             'apiKey': apikey,
             'dataType': ["news", "pr", "blog"],
-            #'dateStart': "2023-01-01",
-            #'dateEnd': "2023-01-02",
             'articlesSortByAsc': True,
             'includeArticleSocialScore': True,
             'includeArticleCategories': True,
@@ -47,10 +44,7 @@ def extractData():
         try:
             data = response.json()
             logger.info(f"Success: {response.status_code} - Retrieved {len(data.get('articles', []))} articles")
-            logger.info(f"Response Data: {data}")  # Log the entire response
-
             result = data['articles']['results']
-
             return result
         except ValueError as e:
             logger.error("Error parsing JSON: %s", e)
@@ -100,11 +94,9 @@ def transformData(ti):
                 'source_link': source_list.get('uri'),
             })
 
-            # Append author information
             author_list = item.get('authors', [])
             if not author_list:
                 authors.append({
-                    #'author_id': str(uuid.uuid4()),
                     'article_id': item.get('uri'),
                     'author_name': None,
                     'author_email': None,
@@ -112,11 +104,9 @@ def transformData(ti):
                     'is_agency': None
                 })
             else:
-                # Loop through each author if multiple authors are present
                 for author in author_list:
                     if isinstance(author, dict):
                         authors.append({
-                            #'author_id': str(uuid.uuid4()),
                             'article_id': item.get('uri'),
                             'author_name': author.get('name', None),
                             'author_email': author.get('uri', None),
@@ -124,45 +114,43 @@ def transformData(ti):
                             'is_agency': author.get('isAgency', None)
                         })
                     else:
-                        # Handle cases where author data isn't a dict
                         authors.append({
-                            #'author_id': str(uuid.uuid4()),
                             'article_id': item.get('uri'),
                             'author_name': None,
                             'author_email': None,
                             'author_type': None,
                             'is_agency': None
                         })
-            # Append category information
             category_list = item.get('categories', [])
-            for category in category_list:  # Iterate directly over the list
+            for category in category_list:
                 first_level, second_level, third_level = extract_levels(category.get('label', None))
                 categories.append({
                         'article_id': item.get('uri'),
-                        #'uri': category.get('uri', None),
                         'label': category.get('label', None),
                         'keyword_1': first_level,
                         'keyword_2': second_level,
                         'keyword_3': third_level
                     })
 
-            # Append share information on social medias
             share_list = item.get('shares')
             facebook_shares.append({
-                    #'share_id': str(uuid.uuid4()),
                     'article_id': item.get('uri'),
                     'facebook_share': share_list.get('facebook'),
             })
-            
-            articles_df = pd.DataFrame(articles)
-            sources_df = pd.DataFrame(sources)
-            authors_df = pd.DataFrame(authors)
-            categories_df = pd.DataFrame(categories)
-            shares_df = pd.DataFrame(facebook_shares)
+    
+    ti.xcom_push(key='articles_df', value=pd.DataFrame(articles))
+    ti.xcom_push(key='sources_df', value=pd.DataFrame(sources))
+    ti.xcom_push(key='authors_df', value=pd.DataFrame(authors))
+    ti.xcom_push(key='categories_df', value=pd.DataFrame(categories))
+    ti.xcom_push(key='shares_df', value=pd.DataFrame(facebook_shares))
 
-            loadData(articles_df, sources_df, authors_df, categories_df, shares_df)
+def loadData(ti):
+    articles_df = ti.xcom_pull(key='articles_df', task_ids='transform_data')
+    sources_df = ti.xcom_pull(key='sources_df', task_ids='transform_data')
+    authors_df = ti.xcom_pull(key='authors_df', task_ids='transform_data')
+    categories_df = ti.xcom_pull(key='categories_df', task_ids='transform_data')
+    shares_df = ti.xcom_pull(key='shares_df', task_ids='transform_data')
 
-def loadData(articles_df, sources_df, authors_df, categories_df, shares_df):
     if articles_df.empty and sources_df.empty and authors_df.empty and categories_df.empty and shares_df.empty:
         logger.warning("No data to load into the database")
         return
@@ -182,10 +170,10 @@ def loadData(articles_df, sources_df, authors_df, categories_df, shares_df):
         logger.error("Error loading data: %s", e)
         raise
 
-with DAG('ArticleETLPipeline',
+with DAG('ETLTestPipeline',
          default_args=default_args,
-         schedule_interval=dt.timedelta(minutes=30),
-         max_active_runs=1,
+         schedule=dt.timedelta(days=1),
+         #max_active_runs=1,
          catchup=False) as dag:
     
     extract_data = PythonOperator(
@@ -201,13 +189,6 @@ with DAG('ArticleETLPipeline',
     load_data = PythonOperator(
         task_id='load_data',
         python_callable=loadData,
-        op_kwargs={
-            'articles_df': pd.DataFrame(),
-            'sources_df': pd.DataFrame(),
-            'authors_df': pd.DataFrame(),
-            'categories_df': pd.DataFrame(),
-            'shares_df': pd.DataFrame(),
-        }
     )
 
 extract_data >> transform_data >> load_data
