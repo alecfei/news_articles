@@ -1,4 +1,5 @@
 import datetime as dt
+from datetime import datetime, timedelta
 import logging
 
 from dotenv import load_dotenv
@@ -22,11 +23,84 @@ load_dotenv()
 
 default_args = {
     'owner': 'alecfei',
-    'start_date': dt.datetime(2024, 10, 30),
-    #'retries': 1,
-    'retry_delay': dt.timedelta(minutes=5),
+    'start_date': datetime(2024, 10, 30),
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
 }
 
+# Create tables in database in PostgreSQL
+def createTables():
+    try:
+        engine = sqlalchemy.create_engine(os.getenv("DATABASE_URL"))
+        with engine.begin() as connection:
+            # Create Articles Table
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS articles (
+                    id TEXT PRIMARY KEY,
+                    is_duplicate BOOLEAN,
+                    datetime_found TIMESTAMP,
+                    datetime_published TIMESTAMP,
+                    article_type TEXT,
+                    sim FLOAT,
+                    url TEXT,
+                    title TEXT,
+                    body TEXT,
+                    image TEXT,
+                    sentiment TEXT,
+                    relevance FLOAT
+                );
+            """))
+
+            # Create Sources Table
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS sources (
+                    article_id TEXT,
+                    source_name TEXT,
+                    source_link TEXT,
+                    UNIQUE (article_id, source_name)
+                );
+            """))
+
+            # Create Authors Table
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS authors (
+                    article_id TEXT,
+                    author_name TEXT,
+                    author_email TEXT,
+                    author_type TEXT,
+                    is_agency BOOLEAN,
+                    UNIQUE (article_id, author_name, author_email)
+                );
+            """))
+
+            # Create Categories Table
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS categories (
+                    article_id TEXT,
+                    label TEXT,
+                    keyword_1 TEXT,
+                    keyword_2 TEXT,
+                    keyword_3 TEXT,
+                    UNIQUE (article_id)
+                );
+            """))
+
+            # Create Facebook Shares Table
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS facebookshares (
+                    article_id TEXT,
+                    shares FLOAT,
+                    UNIQUE (article_id)
+                );
+            """))
+
+        logger.info("Tables created or already exist.")
+
+    except Exception as e:
+        logger.error("Error creating tables: %s", e)
+        raise
+
+# Extract articles from NewsAPI
 def extractData():
     apikey = os.getenv("NEWS_API_KEY")
     
@@ -34,7 +108,9 @@ def extractData():
     params = {
             'apiKey': apikey,
             'dataType': ["news", "pr", "blog"],
-            #'articlesSortByAsc': True,
+            'dateStart' : (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d'),
+            'dateEnd' : (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
+            'articlesSortByAsc': True,
             'includeArticleSocialScore': True,
             'includeArticleCategories': True,
             'lang': "eng",
@@ -56,7 +132,7 @@ def extractData():
         logger.error("API request failed with status code %d: %s", response.status_code, response.text)
         raise Exception(f"API request failed with status code {response.status_code}")
 
-# Function to get first, second, and third-level keywords
+# Define function to get first, second, and third-level keywords in category lists
 def extract_levels(label):
     parts = label.split('/')
     first_level = parts[1] if len(parts) > 1 else None
@@ -64,6 +140,7 @@ def extract_levels(label):
     third_level = parts[3] if len(parts) > 3 else None
     return first_level, second_level, third_level
 
+# Transform data into the form for loading into database, i.e. data modeling
 def transformData(ti):
     data = ti.xcom_pull(task_ids='extract_data')
 
@@ -142,7 +219,7 @@ def transformData(ti):
                     'shares': share_list.get('facebook'),
             })
     
-    # Create DataFrames
+    # Create pandas DataFrames
     articles_df = pd.DataFrame(articles)
     sources_df = pd.DataFrame(sources)
     authors_df = pd.DataFrame(authors)
@@ -235,12 +312,17 @@ def loadData(ti):
         raise
 
 
-with DAG('ETLTestPipeline',
+with DAG('ETLPipelineForArticles',
          default_args=default_args,
-         schedule=dt.timedelta(minutes=3),
+         schedule=timedelta(minutes=60),
          catchup=False
          ) as dag:
     
+    create_tables = PythonOperator(
+        task_id='create_tables',
+        python_callable=createTables,
+    )
+
     extract_data = PythonOperator(
         task_id='extract_data',
         python_callable=extractData,
@@ -256,4 +338,4 @@ with DAG('ETLTestPipeline',
         python_callable=loadData,
     )
 
-extract_data >> transform_data >> load_data
+create_tables >> extract_data >> transform_data >> load_data
