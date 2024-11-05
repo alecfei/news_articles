@@ -107,9 +107,11 @@ def extractData():
     url = 'https://eventregistry.org/api/v1/article/getArticles?'
     params = {
             'apiKey': apikey,
-            'dataType': ["news", "pr", "blog"],
-            'dateStart' : (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d'),
-            'dateEnd' : (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
+            #'dataType': ["news", "pr", "blog"],
+            'dateStart': '2024-10-01',
+            #'dateEnd': '2024-10-10',
+            #'dateStart' : (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d'),
+            #'dateEnd' : (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'),
             'articlesSortByAsc': True,
             'includeArticleSocialScore': True,
             'includeArticleCategories': True,
@@ -314,7 +316,7 @@ def loadData(ti):
 
 with DAG('ETLPipelineForArticles',
          default_args=default_args,
-         schedule=timedelta(minutes=60),
+         schedule=timedelta(minutes=5),
          catchup=False
          ) as dag:
     

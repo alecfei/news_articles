@@ -3,8 +3,8 @@
     * [Data pipeline](#setup)
         * [API info](#api-intro)
         * [Articles Batch Processing using Apache Airflow](#airflow-streaming)
-    * [Data analysis using SQL](#sql)
-    * [Data visualiastion using Metabase ???](#metabase)
+    * [Data analysis using SQL (in progress)](#sql)
+    * [Data visualiastion using Metabase (in progress)](#metabase)
 
 <!-- small space -->
 
